@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -42,6 +43,7 @@ func main() {
 	prometheus.MustRegister(collector)
 
 	ctx, cancel := context.WithCancel(context.TODO())
+
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(*listen, nil))
@@ -51,6 +53,7 @@ func main() {
 	ble.Scan(ctx, true, advHandler, nil)
 }
 
+var deviceStatusesMutex sync.Mutex
 var deviceStatuses map[string]DeviceStatus = map[string]DeviceStatus{}
 
 type DeviceStatus struct {
@@ -72,6 +75,8 @@ func advHandler(a ble.Advertisement) {
 		return
 	}
 
+	deviceStatusesMutex.Lock()
+	defer deviceStatusesMutex.Unlock()
 	for _, data := range a.ServiceData() {
 		if data.Data[0] != 0x54 { // SwitchBot MeterTH
 			continue
@@ -104,6 +109,8 @@ func (*SwitchBotCollector) Describe(chan<- *prometheus.Desc) {
 
 func (*SwitchBotCollector) Collect(ch chan<- prometheus.Metric) {
 	current := time.Now()
+	deviceStatusesMutex.Lock()
+	defer deviceStatusesMutex.Unlock()
 	for addr, status := range deviceStatuses {
 		if current.Sub(status.Updated) > 1*time.Minute {
 			continue
