@@ -3,20 +3,20 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/go-ble/ble"
 	"github.com/go-ble/ble/examples/lib/dev"
 	"github.com/go-ble/ble/linux"
 	"github.com/go-ble/ble/linux/hci/cmd"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"log"
-	"net/http"
-	"time"
 )
 
 func main() {
-	var listen = flag.String("listen", ":2112", "metrics listen address")
+	var listen = flag.String("listen", ":9012", "metrics listen address")
 	flag.Parse()
 
 	// https://github.com/go-ble/ble/tree/master/examples
@@ -44,12 +44,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-
-		fmt.Printf("listen in %s\n", *listen)
-		err := http.ListenAndServe(*listen, nil)
-		if err != nil {
-			panic(err)
-		}
+		log.Fatal(http.ListenAndServe(*listen, nil))
 		cancel()
 	}()
 
@@ -66,6 +61,7 @@ type DeviceStatus struct {
 }
 
 func advHandler(a ble.Advertisement) {
+	// spec: https://github.com/OpenWonderLabs/python-host/wiki/Meter-BLE-open-API
 	found := false
 	for _, uuid := range a.Services() {
 		if uuid.String() == "cba20d00224d11e69fb80002a5d5c51b" {
@@ -77,12 +73,17 @@ func advHandler(a ble.Advertisement) {
 	}
 
 	for _, data := range a.ServiceData() {
+		if data.Data[0] != 0x54 { // SwitchBot MeterTH
+			continue
+		}
+		if len(data.Data) < 6 {
+			continue
+		}
+
 		temp := float64(data.Data[4] & 0x7f)
 		temp += float64(data.Data[3]) / 10
 		humidity := int(data.Data[5] & 0x7f)
 		battery := int(data.Data[2])
-
-		fmt.Printf("[%s] temp: %.1f humidity: %d battery: %d\n", a.Addr(), temp, humidity, battery)
 
 		deviceStatuses[a.Addr().String()] = DeviceStatus{
 			Temperature: temp,
@@ -93,7 +94,7 @@ func advHandler(a ble.Advertisement) {
 	}
 }
 
-var ns = "temperature_collector"
+var ns = "switchbot"
 
 type SwitchBotCollector struct {
 }
