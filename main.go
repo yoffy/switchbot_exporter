@@ -14,6 +14,8 @@ import (
 	"github.com/go-ble/ble/linux/hci/cmd"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	_ "net/http/pprof"
 )
 
 func main() {
@@ -29,10 +31,11 @@ func main() {
 	ble.SetDefaultDevice(d)
 	dev := d.(*linux.Device)
 
+	// https://electronics.stackexchange.com/questions/82098/ble-scan-interval-and-window
 	if err := dev.HCI.Send(&cmd.LESetScanParameters{
 		LEScanType:           0x01,   // 0x00: passive, 0x01: active
-		LEScanInterval:       0x0004, // 0x0004 - 0x4000; N * 0.625msec
-		LEScanWindow:         0x0004, // 0x0004 - 0x4000; N * 0.625msec
+		LEScanInterval:       0x0040, // 0x0004 - 0x4000; N * 0.625msec
+		LEScanWindow:         0x0030, // 0x0004 - 0x4000; N * 0.625msec
 		OwnAddressType:       0x01,   // 0x00: public, 0x01: random
 		ScanningFilterPolicy: 0x00,   // 0x00: accept all, 0x01: ignore non-white-listed.
 	}, nil); err != nil {
@@ -42,15 +45,17 @@ func main() {
 	collector := &SwitchBotCollector{}
 	prometheus.MustRegister(collector)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(*listen, nil))
-		cancel()
 	}()
 
-	ble.Scan(ctx, true, advHandler, nil)
+	for {
+		// 60 secs in 1 cycle (11 + 49)
+		ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second)
+		ble.Scan(ble.WithSigHandler(ctx, cancel), true, advHandler, nil) // heavy function
+		time.Sleep(49*time.Second)
+	}
 }
 
 var deviceStatusesMutex sync.Mutex
@@ -63,10 +68,17 @@ type DeviceStatus struct {
 	Updated     time.Time
 }
 
+func getDeviceStatuses() map[string]DeviceStatus {
+	deviceStatusesMutex.Lock()
+	defer deviceStatusesMutex.Unlock()
+	return deviceStatuses
+}
+
 func advHandler(a ble.Advertisement) {
 	// spec: https://github.com/OpenWonderLabs/python-host/wiki/Meter-BLE-open-API
 	found := false
-	for _, uuid := range a.Services() {
+	services := a.Services()
+	for _, uuid := range services {
 		if uuid.String() == "cba20d00224d11e69fb80002a5d5c51b" {
 			found = true
 		}
@@ -75,8 +87,7 @@ func advHandler(a ble.Advertisement) {
 		return
 	}
 
-	deviceStatusesMutex.Lock()
-	defer deviceStatusesMutex.Unlock()
+	addr := a.Addr().String()
 	for _, data := range a.ServiceData() {
 		if data.Data[0] != 0x54 { // SwitchBot MeterTH
 			continue
@@ -90,7 +101,10 @@ func advHandler(a ble.Advertisement) {
 		humidity := int(data.Data[5] & 0x7f)
 		battery := int(data.Data[2])
 
-		deviceStatuses[a.Addr().String()] = DeviceStatus{
+		deviceStatusesMutex.Lock()
+		defer deviceStatusesMutex.Unlock()
+
+		deviceStatuses[addr] = DeviceStatus{
 			Temperature: temp,
 			Humidity:    humidity,
 			Battery:     battery,
@@ -108,13 +122,8 @@ func (*SwitchBotCollector) Describe(chan<- *prometheus.Desc) {
 }
 
 func (*SwitchBotCollector) Collect(ch chan<- prometheus.Metric) {
-	current := time.Now()
-	deviceStatusesMutex.Lock()
-	defer deviceStatusesMutex.Unlock()
-	for addr, status := range deviceStatuses {
-		if current.Sub(status.Updated) > 1*time.Minute {
-			continue
-		}
+	statuses := getDeviceStatuses()
+	for addr, status := range statuses {
 		labels := map[string]string{
 			"hw": addr,
 		}
