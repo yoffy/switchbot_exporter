@@ -7,6 +7,8 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 )
 
+replace github.com/go-ble/ble => github.com/yoffy/ble v0.0.0-20220114120610-a6fe6f6f20ad
+
 require (
 	github.com/JuulLabs-OSS/cbgo v0.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

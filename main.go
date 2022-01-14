@@ -14,8 +14,6 @@ import (
 	"github.com/go-ble/ble/linux/hci/cmd"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	_ "net/http/pprof"
 )
 
 func main() {
