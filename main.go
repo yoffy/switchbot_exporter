@@ -5,7 +5,6 @@ import (
 	"flag"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-ble/ble/linux"
 	"github.com/go-ble/ble/linux/hci/cmd"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -40,9 +40,6 @@ func main() {
 		panic(err)
 	}
 
-	collector := &SwitchBotCollector{}
-	prometheus.MustRegister(collector)
-
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(*listen, nil))
@@ -56,24 +53,46 @@ func main() {
 	}
 }
 
-var deviceStatusesMutex sync.Mutex
-var deviceStatuses map[string]DeviceStatus = map[string]DeviceStatus{}
-
-type DeviceStatus struct {
-	Temperature float64
-	Humidity    int
-	Battery     int
-	Updated     time.Time
-}
-
-func getDeviceStatuses() map[string]DeviceStatus {
-	deviceStatusesMutex.Lock()
-	defer deviceStatusesMutex.Unlock()
-	return deviceStatuses
-}
+var (
+	ns = "switchbot"
+	batteryGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace:   ns,
+			Name:        "battery",
+			Help:        "battery level (0-100)",
+		},
+		[]string{"hw"})
+	temperatureGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace:   ns,
+			Name:        "temperature",
+			Help:        "temperature in Celsius",
+		},
+		[]string{"hw"})
+	humidityGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace:   ns,
+			Name:        "humidity",
+			Help:        "humidity (0-100)",
+		},
+		[]string{"hw"})
+	positionGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace:   ns,
+			Name:        "position",
+			Help:        "position (0-100)",
+		},
+		[]string{"hw"})
+	brightnessGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace:   ns,
+			Name:        "brightness",
+			Help:        "brightness (0-10)",
+		},
+		[]string{"hw"})
+)
 
 func advHandler(a ble.Advertisement) {
-	// spec: https://github.com/OpenWonderLabs/python-host/wiki/Meter-BLE-open-API
 	found := false
 	services := a.Services()
 	for _, uuid := range services {
@@ -87,67 +106,37 @@ func advHandler(a ble.Advertisement) {
 
 	addr := a.Addr().String()
 	for _, data := range a.ServiceData() {
-		if data.Data[0] != 0x54 { // SwitchBot MeterTH
-			continue
+		switch data.Data[0] {
+		case 0x54:
+			// SwitchBot MeterTH
+			// spec: https://github.com/OpenWonderLabs/python-host/wiki/Meter-BLE-open-API
+			if len(data.Data) < 6 {
+				continue
+			}
+
+			battery := float64(data.Data[2] & 0x7f)
+			temp := float64(data.Data[3] & 0xff) / 10
+			temp += float64(data.Data[4] & 0x7f)
+			humidity := float64(data.Data[5] & 0x7f)
+
+			batteryGauge.With(prometheus.Labels{"hw": addr}).Set(battery)
+			temperatureGauge.With(prometheus.Labels{"hw": addr}).Set(temp)
+			humidityGauge.With(prometheus.Labels{"hw": addr}).Set(humidity)
+
+		case 0x63:
+			// SwitchBot Curtain
+			// spec: https://github.com/OpenWonderLabs/python-host/wiki/Curtain-BLE-open-API
+			if len(data.Data) < 5 {
+				continue
+			}
+
+			battery := float64(data.Data[2] & 0x7f)
+			position := float64(data.Data[3] & 0x7f)
+			brightness := float64(data.Data[4] >> 4)
+
+			batteryGauge.With(prometheus.Labels{"hw": addr}).Set(battery)
+			positionGauge.With(prometheus.Labels{"hw": addr}).Set(position)
+			brightnessGauge.With(prometheus.Labels{"hw": addr}).Set(brightness)
 		}
-		if len(data.Data) < 6 {
-			continue
-		}
-
-		temp := float64(data.Data[4] & 0x7f)
-		temp += float64(data.Data[3]) / 10
-		humidity := int(data.Data[5] & 0x7f)
-		battery := int(data.Data[2])
-
-		deviceStatusesMutex.Lock()
-		defer deviceStatusesMutex.Unlock()
-
-		deviceStatuses[addr] = DeviceStatus{
-			Temperature: temp,
-			Humidity:    humidity,
-			Battery:     battery,
-			Updated:     time.Now(),
-		}
-	}
-}
-
-var ns = "switchbot"
-
-type SwitchBotCollector struct {
-}
-
-func (*SwitchBotCollector) Describe(chan<- *prometheus.Desc) {
-}
-
-func (*SwitchBotCollector) Collect(ch chan<- prometheus.Metric) {
-	statuses := getDeviceStatuses()
-	for addr, status := range statuses {
-		labels := map[string]string{
-			"hw": addr,
-		}
-		tmpGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "temperature",
-			ConstLabels: labels,
-		})
-		tmpGauge.Set(status.Temperature)
-
-		humGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "humidity",
-			ConstLabels: labels,
-		})
-		humGauge.Set(float64(status.Humidity))
-
-		batteryGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "battery",
-			ConstLabels: labels,
-		})
-		batteryGauge.Set(float64(status.Battery))
-
-		ch <- tmpGauge
-		ch <- humGauge
-		ch <- batteryGauge
 	}
 }
