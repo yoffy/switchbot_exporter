@@ -49,45 +49,45 @@ func main() {
 		// 60 secs in 1 cycle (11 + 49)
 		ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second)
 		ble.Scan(ble.WithSigHandler(ctx, cancel), true, advHandler, nil) // heavy function
-		time.Sleep(49*time.Second)
+		time.Sleep(49 * time.Second)
 	}
 }
 
 var (
-	ns = "switchbot"
+	ns           = "switchbot"
 	batteryGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "battery",
-			Help:        "battery level (0-100)",
+			Namespace: ns,
+			Name:      "battery",
+			Help:      "battery level (0-100)",
 		},
 		[]string{"hw"})
 	temperatureGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "temperature",
-			Help:        "temperature in Celsius",
+			Namespace: ns,
+			Name:      "temperature",
+			Help:      "temperature in Celsius",
 		},
 		[]string{"hw"})
 	humidityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "humidity",
-			Help:        "humidity (0-100)",
+			Namespace: ns,
+			Name:      "humidity",
+			Help:      "humidity (0-100)",
 		},
 		[]string{"hw"})
 	positionGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "position",
-			Help:        "position (0-100)",
+			Namespace: ns,
+			Name:      "position",
+			Help:      "position (0-100)",
 		},
 		[]string{"hw"})
 	brightnessGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace:   ns,
-			Name:        "brightness",
-			Help:        "brightness (0-10)",
+			Namespace: ns,
+			Name:      "brightness",
+			Help:      "brightness (0-10)",
 		},
 		[]string{"hw"})
 )
@@ -115,7 +115,7 @@ func advHandler(a ble.Advertisement) {
 			}
 
 			battery := float64(data.Data[2] & 0x7f)
-			temp := float64(data.Data[3] & 0xff) / 10
+			temp := float64(data.Data[3]&0xff) / 10
 			temp += float64(data.Data[4] & 0x7f)
 			humidity := float64(data.Data[5] & 0x7f)
 
