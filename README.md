@@ -8,26 +8,22 @@ It collects metrics via Bluetooth.
 * Linux
 * go compiler
 
-## build
+## install
 
 ```bash
-$ go build
+$ make && sudo make install
 ```
 
-## run
+It is installed as switchbot_exporter.service.
+
+## uninstall
 
 ```bash
-$ sudo ./switchbot_exporter &
+$ sudo make uninstall
 ```
 
 ## get metrics
 
 ```bash
 $ curl http://localhost:9012/metrics
-```
-
-## stop
-
-```bash
-$ pkill switchbot_exporter
 ```

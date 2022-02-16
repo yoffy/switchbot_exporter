@@ -1,0 +1,10 @@
+[Unit]
+Description = switchbot exporter
+
+[Service]
+ExecStart = /usr/local/bin/switchbot_exporter
+Restart = always
+Type = simple
+
+[Install]
+WantedBy = multi-user.target
