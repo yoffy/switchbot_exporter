@@ -1,5 +1,7 @@
 [Unit]
 Description = switchbot exporter
+Requires = bluetooth.service
+After = bluetooth.service
 
 [Service]
 ExecStart = /usr/local/bin/switchbot_exporter
