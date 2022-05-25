@@ -93,17 +93,6 @@ var (
 )
 
 func advHandler(a ble.Advertisement) {
-	found := false
-	services := a.Services()
-	for _, uuid := range services {
-		if uuid.String() == "cba20d00224d11e69fb80002a5d5c51b" {
-			found = true
-		}
-	}
-	if !found {
-		return
-	}
-
 	addr := a.Addr().String()
 	for _, data := range a.ServiceData() {
 		switch data.Data[0] {
