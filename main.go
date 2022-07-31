@@ -95,11 +95,12 @@ var (
 func advHandler(a ble.Advertisement) {
 	addr := a.Addr().String()
 	for _, data := range a.ServiceData() {
+		// https://github.com/OpenWonderLabs/SwitchBotAPI-BLE
 		switch data.Data[0] {
 		case 0x54:
 			// SwitchBot MeterTH
-			// spec: https://github.com/OpenWonderLabs/python-host/wiki/Meter-BLE-open-API
-			if len(data.Data) < 6 {
+			// spec: https://github.com/OpenWonderLabs/SwitchBotAPI-BLE/blob/latest/devicetypes/meter.md
+			if len(data.Data) != 6 {
 				continue
 			}
 
@@ -114,8 +115,8 @@ func advHandler(a ble.Advertisement) {
 
 		case 0x63:
 			// SwitchBot Curtain
-			// spec: https://github.com/OpenWonderLabs/python-host/wiki/Curtain-BLE-open-API
-			if len(data.Data) < 5 {
+			// spec: https://github.com/OpenWonderLabs/SwitchBotAPI-BLE/blob/latest/devicetypes/curtain.md
+			if len(data.Data) != 5 {
 				continue
 			}
 
