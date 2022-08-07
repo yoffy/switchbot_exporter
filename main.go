@@ -95,6 +95,10 @@ var (
 func advHandler(a ble.Advertisement) {
 	addr := a.Addr().String()
 	for _, data := range a.ServiceData() {
+		if len(data.Data) == 0 {
+			continue
+		}
+
 		// https://github.com/OpenWonderLabs/SwitchBotAPI-BLE
 		switch data.Data[0] {
 		case 0x54:
