@@ -120,7 +120,7 @@ func advHandler(a ble.Advertisement) {
 		case 0x63:
 			// SwitchBot Curtain
 			// spec: https://github.com/OpenWonderLabs/SwitchBotAPI-BLE/blob/latest/devicetypes/curtain.md
-			if len(data.Data) != 5 {
+			if len(data.Data) != 6 {
 				continue
 			}
 
